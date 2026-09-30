@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Live HTML Previewer</title>
+    
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load LZ-String for URL compression -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+    
+    <style>
+        /* Custom scrollbar for the editor */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; 
+        }
+        
+        /* Toast animation classes */
+        .toast-enter {
+            transform: translateY(100%);
+            opacity: 0;
+        }
+        .toast-enter-active {
+            transform: translateY(0);
+            opacity: 1;
+            transition: all 0.3s ease-out;
+        }
+        .toast-exit {
+            transform: translateY(100%);
+            opacity: 0;
+            transition: all 0.3s ease-in;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white h-screen flex flex-col font-sans overflow-hidden">
+
+    <header class="bg-gray-900 border-b border-gray-800 p-4 flex flex-col sm:flex-row justify-between items-center shrink-0 shadow-md z-10">
+        <div class="flex items-center gap-3 mb-3 sm:mb-0">
+            <div class="w-8 h-8 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center font-bold text-lg shadow-lg text-white">
+                &lt;/&gt;
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-gray-100">HTML Previewer</h1>
+                <p class="text-xs text-gray-400">LZ-String Compressed URLs</p>
+            </div>
+        </div>
+        
+        <div class="flex gap-3">
+            <button id="copy-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-gray-900">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                Copy Shareable Link
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row gap-4 p-4 overflow-hidden h-full">
+        
+        <!-- Left Panel: Code Editor -->
+        <div class="flex-1 flex flex-col h-full bg-gray-900 rounded-xl border border-gray-800 shadow-inner overflow-hidden">
+            <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 flex justify-between items-center text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                <span>Editor (HTML/CSS/JS)</span>
+            </div>
+            <textarea id="editor" class="flex-1 w-full p-4 bg-transparent text-gray-200 font-mono text-sm leading-relaxed outline-none resize-none" spellcheck="false" placeholder="<!-- Paste your HTML here -->"></textarea>
+        </div>
+
+        <!-- Right Panel: Live Preview -->
+        <div class="flex-1 flex flex-col h-full bg-white rounded-xl border border-gray-300 shadow-lg overflow-hidden relative group">
+            <div class="px-4 py-2 bg-gray-100 border-b border-gray-200 flex justify-between items-center text-xs text-gray-500 uppercase tracking-wider font-semibold z-10">
+                <span>Live Preview</span>
+            </div>
+            <iframe id="preview" class="w-full flex-1 bg-white border-none" sandbox="allow-scripts allow-same-origin allow-modals"></iframe>
+        </div>
+
+    </main>
+
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 text-sm font-medium z-50 transition-all duration-300 toast-enter hidden">
+        <svg class="text-emerald-400" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="toast-message">Link copied to clipboard!</span>
+    </div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const preview = document.getElementById('preview');
+        const copyBtn = document.getElementById('copy-btn');
+        const toast = document.getElementById('toast');
+        
+        const defaultHTML = `<div style="font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #333;">
+  <h1 style="color: #059669;">LZ-String Compression Active! 🚀</h1>
+  <p style="font-size: 1.2rem; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+    This version compresses your code using <strong>LZ-String</strong> before putting it in the URL. 
+    This allows you to share much larger snippets of code safely!
+  </p>
+  <style>
+    .btn { margin-top: 20px; padding: 10px 20px; background: #059669; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; transition: background 0.2s; }
+    .btn:hover { background: #047857; }
+  </style>
+  <button class="btn" onclick="alert('JavaScript is running perfectly!')">
+    Test Scripts
+  </button>
+</div>`;
+
+        function updatePreview() {
+            const code = editor.value;
+            
+            // 1. Update the iframe content
+            const doc = preview.contentDocument || preview.contentWindow.document;
+            doc.open();
+            doc.write(code);
+            doc.close();
+            
+            // 2. Compress the code using LZ-String and update the URL
+            try {
+                // Use compressToEncodedURIComponent for safe URL inclusion
+                const compressed = LZString.compressToEncodedURIComponent(code);
+                
+                // Only update hash if it actually changed to prevent history spam
+                if (window.location.hash !== `#${compressed}`) {
+                    window.history.replaceState(null, null, `#${compressed}`);
+                }
+            } catch (err) {
+                console.error("Compression failed:", err);
+            }
+        }
+
+        let toastTimeout;
+        function showToast(message) {
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = message;
+            
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.remove('toast-enter', 'toast-exit');
+                toast.classList.add('toast-enter-active');
+            }, 10);
+
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('toast-enter-active');
+                toast.classList.add('toast-exit');
+                setTimeout(() => {
+                    toast.classList.add('hidden', 'toast-enter');
+                    toast.classList.remove('toast-exit');
+                }, 300);
+            }, 3000);
+        }
+
+        copyBtn.addEventListener('click', async () => {
+            const url = window.location.href;
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('Compressed link copied!');
+            } catch (err) {
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = url;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempTextArea);
+                showToast('Compressed link copied!');
+            }
+        });
+
+        editor.addEventListener('input', updatePreview);
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const hash = window.location.hash.substring(1); 
+            
+            if (hash) {
+                try {
+                    // Decompress the URL hash back into raw HTML
+                    const decompressed = LZString.decompressFromEncodedURIComponent(hash);
+                    if (decompressed !== null) {
+                        editor.value = decompressed;
+                    } else {
+                        editor.value = defaultHTML;
+                    }
+                } catch (e) {
+                    console.error("Failed to decompress URL hash.", e);
+                    editor.value = defaultHTML;
+                }
+            } else {
+                editor.value = defaultHTML;
+            }
+            
+            updatePreview();
+        });
+    </script>
+</body>
+</html>
