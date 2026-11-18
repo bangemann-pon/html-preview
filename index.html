@@ -68,7 +68,7 @@
             </div>
         </div>
         
-        <div class="flex gap-2 w-full sm:w-auto">
+        <div class="flex flex-wrap gap-2 w-full sm:w-auto">
             <button id="toggle-view-btn" class="flex-1 sm:flex-none bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500">
                 <svg id="view-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -83,8 +83,13 @@
                 </svg>
                 Share Link
             </button>
+            <button id="short-link-btn" type="button" class="flex-1 sm:flex-none bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-4 py-2 rounded-md font-medium text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-gray-500">
+                Short Link
+            </button>
         </div>
     </header>
+
+    <p id="load-status" role="status" hidden class="shrink-0 bg-gray-800 px-4 py-2 text-sm text-gray-100"></p>
 
     <main class="flex-1 flex flex-col md:flex-row gap-4 p-4 overflow-hidden h-full">
         
@@ -101,10 +106,31 @@
             <div class="px-4 py-2 bg-gray-100 border-b border-gray-200 flex justify-between items-center text-xs text-gray-500 uppercase tracking-wider font-semibold z-10">
                 <span>Live Preview</span>
             </div>
-            <iframe id="preview" class="w-full flex-1 bg-white border-none" sandbox="allow-scripts allow-same-origin allow-modals"></iframe>
+            <iframe id="preview" title="Live preview" class="w-full flex-1 bg-white border-none" sandbox="allow-scripts allow-modals"></iframe>
         </div>
 
     </main>
+
+    <dialog id="short-link-dialog" aria-labelledby="short-link-heading" class="w-11/12 max-w-lg rounded-xl border border-gray-700 bg-gray-900 p-6 text-white backdrop:bg-black/70">
+        <div class="space-y-4">
+            <h2 id="short-link-heading" class="text-xl font-bold">Publish a short link</h2>
+            <p class="text-sm text-gray-300">Short links are public snapshots. Only publish HTML you want anyone to see. Use Share Link instead if you don't have write access.</p>
+            <ol class="list-decimal space-y-2 pl-5 text-sm text-gray-300">
+                <li><a id="download-preview" class="text-emerald-400 underline">Download the preview file</a> without renaming it.</li>
+                <li><a href="https://github.com/bangemann-pon/html-preview/upload/main/previews" target="_blank" rel="noopener noreferrer" class="text-emerald-400 underline">Upload it to GitHub</a> in <code>previews/</code> and commit or merge it into <code>main</code>. This requires repository write access.</li>
+                <li>Share the URL after GitHub Pages finishes deploying.</li>
+            </ol>
+            <label for="short-link-url" class="block text-sm font-medium">URL after deployment</label>
+            <div class="flex flex-wrap gap-2">
+                <input id="short-link-url" type="url" readonly class="min-w-0 flex-1 rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm">
+                <button id="copy-short-link" type="button" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500">Copy URL</button>
+            </div>
+            <p id="short-link-status" role="status" class="text-sm text-gray-300"></p>
+            <form method="dialog" class="text-right">
+                <button autofocus class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium hover:bg-gray-700">Close</button>
+            </form>
+        </div>
+    </dialog>
 
     <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 text-sm font-medium z-50 transition-all duration-300 toast-enter hidden">
         <svg class="text-emerald-400" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -119,6 +145,12 @@
         const editor = document.getElementById('editor');
         const preview = document.getElementById('preview');
         const copyBtn = document.getElementById('copy-btn');
+        const shortLinkBtn = document.getElementById('short-link-btn');
+        const shortLinkDialog = document.getElementById('short-link-dialog');
+        const shortLinkInput = document.getElementById('short-link-url');
+        const shortLinkStatus = document.getElementById('short-link-status');
+        const downloadPreview = document.getElementById('download-preview');
+        const loadStatus = document.getElementById('load-status');
         const toggleViewBtn = document.getElementById('toggle-view-btn');
         const toggleViewText = document.getElementById('toggle-view-text');
         const viewIcon = document.getElementById('view-icon');
@@ -161,26 +193,29 @@
 
         // --- Core Preview & Hash Logic ---
         function updateIframe() {
-            const code = editor.value;
-            const doc = preview.contentDocument || preview.contentWindow.document;
-            doc.open();
-            doc.write(code);
-            doc.close();
+            preview.srcdoc = editor.value;
         }
 
-        function updateURLHash() {
-            const payload = {
+        function getPayload() {
+            return {
                 t: titleInput.value || "Untitled",
                 c: editor.value
             };
-            
+        }
+
+        function getShareURL() {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('p');
+            url.hash = LZString.compressToEncodedURIComponent(JSON.stringify(getPayload()));
+            return url.href;
+        }
+
+        function updateURLHash() {
+            loadStatus.hidden = true;
             try {
-                // Compress JSON object
-                const jsonString = JSON.stringify(payload);
-                const compressed = LZString.compressToEncodedURIComponent(jsonString);
-                
-                if (window.location.hash !== `#${compressed}`) {
-                    window.history.replaceState(null, null, `#${compressed}`);
+                const url = getShareURL();
+                if (window.location.href !== url) {
+                    window.history.replaceState(null, '', url);
                 }
             } catch (err) {
                 console.error("Compression failed:", err);
@@ -218,52 +253,114 @@
             }, 3000);
         }
 
-        copyBtn.addEventListener('click', async () => {
-            const url = window.location.href;
+        async function copyURL(url) {
             try {
                 await navigator.clipboard.writeText(url);
-                showToast('Shareable link copied!');
             } catch (err) {
                 const tempTextArea = document.createElement('textarea');
                 tempTextArea.value = url;
-                document.body.appendChild(tempTextArea);
-                tempTextArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(tempTextArea);
+                (shortLinkDialog.open ? shortLinkDialog : document.body).appendChild(tempTextArea);
+                try {
+                    tempTextArea.select();
+                    if (!document.execCommand('copy')) throw new Error('Clipboard access unavailable');
+                } finally {
+                    tempTextArea.remove();
+                }
+            }
+        }
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await copyURL(getShareURL());
                 showToast('Shareable link copied!');
+            } catch (err) {
+                console.error('Unable to copy share link:', err);
+                showToast('Could not copy the share link.');
             }
         });
 
+        shortLinkBtn.addEventListener('click', () => {
+            const url = new URL(window.location.href);
+            const snapshotId = Array.from(crypto.getRandomValues(new Uint8Array(6)), byte =>
+                byte.toString(16).padStart(2, '0')
+            ).join('');
+            url.search = `?p=${snapshotId}`;
+            url.hash = '';
+            shortLinkInput.value = url.href;
+            shortLinkStatus.textContent = '';
+            downloadPreview.download = `${snapshotId}.json`;
+            downloadPreview.href = URL.createObjectURL(new Blob(
+                [JSON.stringify(getPayload(), null, 2)],
+                { type: 'application/json' }
+            ));
+            shortLinkDialog.showModal();
+        });
+
+        shortLinkDialog.addEventListener('close', () => {
+            URL.revokeObjectURL(downloadPreview.href);
+            downloadPreview.removeAttribute('href');
+            shortLinkBtn.focus();
+        });
+
+        document.getElementById('copy-short-link').addEventListener('click', async () => {
+            try {
+                await copyURL(shortLinkInput.value);
+                shortLinkStatus.textContent = 'URL copied. It will work after deployment.';
+            } catch (err) {
+                shortLinkInput.select();
+                shortLinkStatus.textContent = 'Could not copy automatically. Copy the selected URL.';
+            }
+        });
+
+        async function loadPublishedPreview(id) {
+            if (!/^[a-f0-9]{12}$/.test(id)) throw new Error('Invalid short link ID.');
+            const response = await fetch(`previews/${id}.json`, { redirect: 'error' });
+            if (response.status === 404) throw new Error('Preview not found. It may not be published yet.');
+            if (!response.ok) throw new Error('Could not load the published preview.');
+            const data = await response.json();
+            if (typeof data?.t !== 'string' || typeof data?.c !== 'string') {
+                throw new Error('Invalid preview file.');
+            }
+            return data;
+        }
+
         // --- Initialization ---
-        window.addEventListener('DOMContentLoaded', () => {
-            const hash = window.location.hash.substring(1); 
-            
-            if (hash) {
-                // We have a hash - try to load it and default to Preview Only mode
+        window.addEventListener('DOMContentLoaded', async () => {
+            const id = new URLSearchParams(window.location.search).get('p');
+            const hash = window.location.hash.substring(1);
+            let data = defaultData;
+            let mode = 'split';
+
+            if (id !== null) {
+                const controls = [titleInput, editor, copyBtn, shortLinkBtn, toggleViewBtn];
+                controls.forEach(control => { control.disabled = true; });
+                loadStatus.textContent = 'Loading published preview...';
+                loadStatus.hidden = false;
+                try {
+                    data = await loadPublishedPreview(id);
+                    mode = 'preview';
+                    loadStatus.hidden = true;
+                } catch (err) {
+                    console.error('Failed to load published preview:', err);
+                    loadStatus.textContent = 'Could not open this short link. Check the URL or wait for GitHub Pages to deploy.';
+                } finally {
+                    controls.forEach(control => { control.disabled = false; });
+                }
+            } else if (hash) {
                 try {
                     const decompressed = LZString.decompressFromEncodedURIComponent(hash);
-                    if (decompressed !== null) {
-                        const data = JSON.parse(decompressed);
-                        titleInput.value = data.t || '';
-                        editor.value = data.c || '';
-                    } else {
-                        throw new Error("Decompression returned null");
-                    }
+                    if (decompressed === null) throw new Error("Decompression returned null");
+                    data = JSON.parse(decompressed);
                 } catch (e) {
                     console.error("Failed to parse URL hash.", e);
-                    titleInput.value = defaultData.t;
-                    editor.value = defaultData.c;
                 }
-                setMode('preview'); // Default to Preview Only for shared links
-            } else {
-                // Fresh start - default to Split View so they can type
-                titleInput.value = defaultData.t;
-                editor.value = defaultData.c;
-                setMode('split');
+                mode = 'preview';
             }
-            
+
+            titleInput.value = data?.t || '';
+            editor.value = data?.c || '';
+            setMode(mode);
             updateIframe();
-            // Don't update URL on load so we don't accidentally create a hash for the default template if they just landed on the naked URL.
         });
     </script>
 </body>
