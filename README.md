@@ -2,6 +2,10 @@
 
 A static HTML/CSS/JS previewer. **Share Link** copies a self-contained URL with the current preview compressed into its fragment. Nothing is published to the repository.
 
+## Publishing a standalone HTML project
+
+Run `/create-html-preview` in a Copilot session for this repository. It prompts for a local HTML file or static output folder, a URL slug, and confirmation before publishing to `main`. The project is served at `https://bangemann-pon.github.io/html-preview/demos/<slug>/`; no JSON snapshot is needed.
+
 ## Publishing a short link
 
 1. Click **Short Link** and download the generated `<id>.json` file.
